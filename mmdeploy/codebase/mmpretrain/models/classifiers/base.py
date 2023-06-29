@@ -5,6 +5,7 @@ import torch
 from mmengine.structures import BaseDataElement
 from torch import Tensor
 from torch.nn import functional as F
+from collections import namedtuple
 
 from mmdeploy.core import FUNCTION_REWRITER
 
@@ -35,11 +36,19 @@ def base_classifier__forward(
     if self.head is not None:
         output = self.head(output)
 
-    from mmpretrain.models.heads import ConformerHead, MultiLabelClsHead
+    from mmpretrain.models.heads import ConformerHead, MultiLabelClsHead, MultiTaskHead
+    
     if isinstance(self.head, MultiLabelClsHead):
         output = torch.sigmoid(output)
     elif isinstance(self.head, ConformerHead):
         output = F.softmax(torch.add(output[0], output[1]), dim=1)
+    elif isinstance(self.head, MultiTaskHead):
+        OutTuple = namedtuple('OutTuple', output)
+
+        for k in output:
+            output[k] = F.softmax(output[k], dim=1)
+        
+        output = OutTuple(**output)
     else:
         output = F.softmax(output, dim=1)
     return output

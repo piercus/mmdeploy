@@ -92,37 +92,61 @@ class End2EndModel(BaseBackendModel):
             get_root_logger().warning(f'expect input device {self.device}'
                                       f' but get {inputs.device}.')
         inputs = inputs.to(self.device)
-        cls_score = self.wrapper({self.input_name:
-                                  inputs})[self.output_names[0]]
+        out = self.wrapper({self.input_name:
+                                  inputs})
 
-        from mmpretrain.models.heads import MultiLabelClsHead
-        from mmpretrain.structures import DataSample
-        pred_scores = cls_score
-
-        if self.head is None or not isinstance(self.head, MultiLabelClsHead):
-            pred_labels = pred_scores.argmax(dim=1, keepdim=True).detach()
-
-            if data_samples is not None:
-                for data_sample, score, label in zip(data_samples, pred_scores,
-                                                     pred_labels):
-                    data_sample.set_pred_score(score).set_pred_label(label)
-            else:
-                data_samples = []
-                for score, label in zip(pred_scores, pred_labels):
-                    data_samples.append(DataSample().set_pred_score(
-                        score).set_pred_label(label))
-        else:
+        from mmpretrain.models.heads import MultiLabelClsHead, MultiTaskHead
+        from mmpretrain.structures import DataSample, MultiTaskDataSample
+        
+        if isinstance(self.head, MultiTaskHead):
+            
             if data_samples is None:
-                data_samples = [DataSample() for _ in range(cls_score.size(0))]
+                data_samples = [MultiTaskDataSample() for _ in range(inputs.size(0))]
+            
+            for task_name in self.output_names:
+                for data_sample in data_samples:
+                    if data_sample.get(task_name) is None:
+                        data_sample.set_field(DataSample(), task_name)
+                
+                task_data_samples = [data_sample.get(task_name) for data_sample in data_samples]
+                
+                cls_score = out[task_name]
+                pred_scores = cls_score
+                pred_labels = pred_scores.argmax(dim=1, keepdim=True).detach()
+                                    
+                for task_data_sample, score, label in zip(task_data_samples, pred_scores,
+                                                    pred_labels):
+                    task_data_sample.set_pred_score(score).set_pred_label(label)
 
-            for data_sample, score in zip(data_samples, pred_scores):
-                if self.head.thr is not None:
-                    # a label is predicted positive if larger than thr
-                    label = torch.where(score >= self.head.thr)[0]
+        else:
+            
+            cls_score = out[self.output_names[0]]
+            pred_scores = cls_score
+
+            if self.head is None or not isinstance(self.head, MultiLabelClsHead) and not isinstance(self.head, MultiTaskHead):
+                pred_labels = pred_scores.argmax(dim=1, keepdim=True).detach()
+
+                if data_samples is not None:
+                    for data_sample, score, label in zip(data_samples, pred_scores,
+                                                        pred_labels):
+                        data_sample.set_pred_score(score).set_pred_label(label)
                 else:
-                    # top-k labels will be predicted positive for any example
-                    _, label = score.topk(self.head.topk)
-                data_sample.set_pred_score(score).set_pred_label(label)
+                    data_samples = []
+                    for score, label in zip(pred_scores, pred_labels):
+                        data_samples.append(DataSample().set_pred_score(
+                            score).set_pred_label(label))
+            else:
+                if data_samples is None:
+                    data_samples = [DataSample() for _ in range(cls_score.size(0))]
+
+                for data_sample, score in zip(data_samples, pred_scores):
+                    if self.head.thr is not None:
+                        # a label is predicted positive if larger than thr
+                        label = torch.where(score >= self.head.thr)[0]
+                    else:
+                        # top-k labels will be predicted positive for any example
+                        _, label = score.topk(self.head.topk)
+                    data_sample.set_pred_score(score).set_pred_label(label)
 
         return data_samples
 

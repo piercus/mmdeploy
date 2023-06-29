@@ -157,7 +157,7 @@ class Classification(BaseTask):
         """
         from .classification_model import build_classification_model
 
-        data_preprocessor = self.model_cfg.data_preprocessor
+        data_preprocessor = self.model_cfg.get('data_preprocessor', {})
         if data_preprocessor_updater is not None:
             data_preprocessor = data_preprocessor_updater(data_preprocessor)
         data_preprocessor.setdefault('type', 'mmpretrain.ClsDataPreprocessor')
