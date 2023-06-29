@@ -106,7 +106,8 @@ class End2EndModel(BaseBackendModel):
             for task_name in self.output_names:
                 for data_sample in data_samples:
                     if data_sample.get(task_name) is None:
-                        data_sample.set_field(DataSample(), task_name)
+                        sample = DataSample()
+                        data_sample.set_field(sample, task_name)
                 
                 task_data_samples = [data_sample.get(task_name) for data_sample in data_samples]
                 
@@ -116,7 +117,7 @@ class End2EndModel(BaseBackendModel):
                                     
                 for task_data_sample, score, label in zip(task_data_samples, pred_scores,
                                                     pred_labels):
-                    task_data_sample.set_pred_score(score).set_pred_label(label)
+                    task_data_sample.set_pred_score(score).set_pred_label(label).set_field(True, 'eval_mask')
 
         else:
             
